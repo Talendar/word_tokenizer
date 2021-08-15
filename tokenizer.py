@@ -24,13 +24,33 @@ def _merge_tokens_counts(counts):
 
 
 def _make_batches(items, num_batches):
-    batches = np.array_split(items, num_batches)
-    return [b.tolist() for b in batches]
+    # batches = np.array_split(items, num_batches)
+    # return [b.tolist() for b in batches]
+    k, m = divmod(len(items), num_batches)
+    return [items[(i * k + min(i, m)):((i + 1) * k + min(i + 1, m))]
+            for i in range(num_batches)]
+
+
+def _select_most_frequent(tokens_count, vocab_size):
+    if len(tokens_count) <= vocab_size:
+        return tokens_count
+
+    # Sorting:
+    sorted_counts = sorted(list(tokens_count.items()),
+                           key=itemgetter(1),
+                           reverse=True)
+    
+    # Selecting most frequent tokens:
+    sorted_counts = sorted_counts[:vocab_size]
+
+    # Re-building dict and returning:
+    return {k:v for (k, v) in sorted_counts}
+
 
 
 class Tokenizer:
     _NUMS = "(?:\d+\ ?)+(?:[.,]\d+)?"
-    _WORDS = "[\w']+(?:-\w{4,})?"  # sexta-feira = 1; digo-lhe = 3
+    _WORDS = "[\w']+(?:-\w{4,})?"  # sexta-feira = 1 token; digo-lhe = 3 tokens
     _PUNCTUATION = '(?:\.{3})|[.,!?;:()\-"\/—]'
 
     def __init__(
@@ -96,30 +116,42 @@ class Tokenizer:
 
         return tokens
 
-    def _train_batch(self, batch, pid):        
-        print(f"[P{pid}] Tokenizing and counting.")
+    def _train_batch(self, batch, cache_size, bid):        
+        print(f"[B{bid}] Tokenizing and counting...")
         counts = []
         for txt in batch:
             tokens = self.tokenize(txt)
             counts.append(_count_tokens(tokens))
         
-        print(f"[P{pid}] Merging counts.")
-        return _merge_tokens_counts(counts)
+        print(f"[B{bid}] Merging counts...")
+        tokens_count = _merge_tokens_counts(counts)
+        return tokens_count
 
-    def train(self, texts):
+        print(f"[B{bid}] Selecting most frequent tokens...")
+        return _select_most_frequent(tokens_count, cache_size)
+
+    def train(self, texts, batch_size=None, vocab_cache_size=1_024_000):
         if len(self._vocab) > 3:
             raise RuntimeError("This tokenizer has already been trained!")
 
         # Making batches:
+        print(f"Making batches...")
         num_cpu = multiprocessing.cpu_count()
-        batches = _make_batches(texts, num_batches=min(num_cpu, len(texts)))
-        batches = [(b, pid) for pid, b in enumerate(batches)]
+        if batch_size is not None:
+            batch_count = min(max(int(len(texts) / batch_size), num_cpu),
+                              len(texts))
+        else:
+            batch_count = min(num_cpu, len(texts))
 
-        print(f"{len(batches)} batches created!")
+        batches = _make_batches(texts, num_batches=batch_count)
+        batches = [(b, vocab_cache_size, bid) for bid, b in enumerate(batches)]
+
+        print(f"{len(batches)} batches created "
+              f"(~{len(batches[0][0])} items per batch)!")
         print(f"Starting processes...\n" + "-" * 30)
 
         # Tokenizing and counting tokens:
-        with multiprocessing.Pool(processes=len(batches)) as pool:
+        with multiprocessing.Pool(processes=num_cpu) as pool:
             tokens_count = pool.starmap(self._train_batch, batches)
             tokens_count = _merge_tokens_counts(tokens_count)
 
