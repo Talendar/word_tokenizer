@@ -1,4 +1,3 @@
-#@title Tokenizer
 import multiprocessing
 import pickle
 import re
@@ -50,7 +49,7 @@ def _select_most_frequent(tokens_count, vocab_size):
 class Tokenizer:
     _NUMS = "(?:\d+\ ?)+(?:[.,]\d+)?"
     _WORDS = "[\w]+(?:-\w{4,})?"  # sexta-feira = 1 token; digo-lhe = 3 tokens
-    _PUNCTUATION = '(?:\.{3})|[.,!?;:()\-"\/—]'
+    _PUNCTUATION = '(?:\.{3})|[.,!?;:()\-"\/—]|[\r\n]+'
 
     def __init__(
         self,
