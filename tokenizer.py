@@ -49,7 +49,8 @@ def _select_most_frequent(tokens_count, vocab_size):
 class Tokenizer:
     _NUMS = "(?:\d+\ ?)+(?:[.,]\d+)?"
     _WORDS = "[\w]+(?:-\w{4,})?"  # sexta-feira = 1 token; digo-lhe = 3 tokens
-    _PUNCTUATION = '(?:\.{3})|[.,!?;:()\-"\/—]|[\r\n]+'
+    _PUNCTUATION = '(?:\.{3})|[.,!?;:()\-"\/—]'
+    _NEW_LINE = "[\r\n]+"
 
     def __init__(
         self,
@@ -59,25 +60,33 @@ class Tokenizer:
         pad_token="[PAD]",
         oov_token="[OOV]",
         num_token="[NUM]",
+        new_line_token="[NEW_LINE]"
     ):
         self._regex = re.compile(
             f"(?P<num>{Tokenizer._NUMS})|"
             f"(?P<word>{Tokenizer._WORDS})|"
-            f"(?P<punct>{Tokenizer._PUNCTUATION})"
+            f"(?P<punct>{Tokenizer._PUNCTUATION})|"
+            f"(?P<newline>{Tokenizer._NEW_LINE})"
         )
-
-        self._vocab_size = vocab_size - 3
-        self._out_length = out_length
-        self._lower_texts = lower_texts
 
         self._pad_token = pad_token
         self._oov_token = oov_token
         self._num_token = num_token
+        self._new_line_token = new_line_token
+        
+        self._special_tokens = {
+            pad_token, oov_token, num_token, new_line_token
+        }
+
+        self._vocab_size = vocab_size - len(self._special_tokens)
+        self._out_length = out_length
+        self._lower_texts = lower_texts
 
         self._vocab = {
             f"{pad_token}": 0,
             f"{oov_token}": 1,
             f"{num_token}": 2,
+            f"{new_line_token}": 3,
         }
         self._vocab_reverse = None
 
@@ -100,6 +109,14 @@ class Tokenizer:
     @property
     def num_token(self):
         return self._num_token
+    
+    @property
+    def new_line_token(self):
+        return self._new_line_token
+    
+    @property
+    def special_tokens(self):
+        return self._special_tokens
 
     def tokenize(self, text):
         if self._lower_texts:
@@ -110,7 +127,12 @@ class Tokenizer:
         for m in matches:
             for i in range(len(m)):
                 if m[i] != "":
-                    tokens.append(m[i] if i != 0 else self._num_token)
+                    if i == 0:
+                        tokens.append(self._num_token)
+                    elif i == 3:
+                        tokens.append(self._new_line_token)
+                    else:
+                        tokens.append(m[i])
 
         return tokens
 
@@ -129,7 +151,7 @@ class Tokenizer:
         return _select_most_frequent(tokens_count, cache_size)
 
     def train(self, texts, batch_size=None, vocab_cache_size=1_024_000):
-        if len(self._vocab) > 3:
+        if len(self._vocab) > len(self._special_tokens):
             raise RuntimeError("This tokenizer has already been trained!")
 
         # Making batches:
@@ -153,8 +175,9 @@ class Tokenizer:
             tokens_count = pool.starmap(self._train_batch, batches)
             tokens_count = _merge_tokens_counts(tokens_count)
 
-            # Removing the "num_token" from the dict:
-            tokens_count.pop(self._num_token, None)
+            # Removing special tokens from the dict:
+            for special_token in self._special_tokens:
+                tokens_count.pop(special_token, None)
 
         print("-" * 30)
 
@@ -171,8 +194,8 @@ class Tokenizer:
         # Adding tokens to vocabulary:
         print("Adding tokens to vocabulary...")
         for idx, (token, _) in enumerate(sorted_counts):
-            assert token not in self._vocab
-            self._vocab[token] = idx + 3
+            assert token not in self._vocab, f"Token \"{token}\" added twice!"
+            self._vocab[token] = idx + len(self._special_tokens)
 
         # Checking vocab integrity:
         print("Checking vocab ids integrity...")
