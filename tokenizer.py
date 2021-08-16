@@ -1,3 +1,4 @@
+#@title Tokenizer
 import multiprocessing
 import pickle
 import re
@@ -24,8 +25,6 @@ def _merge_tokens_counts(counts):
 
 
 def _make_batches(items, num_batches):
-    # batches = np.array_split(items, num_batches)
-    # return [b.tolist() for b in batches]
     k, m = divmod(len(items), num_batches)
     return [items[(i * k + min(i, m)):((i + 1) * k + min(i + 1, m))]
             for i in range(num_batches)]
@@ -50,7 +49,7 @@ def _select_most_frequent(tokens_count, vocab_size):
 
 class Tokenizer:
     _NUMS = "(?:\d+\ ?)+(?:[.,]\d+)?"
-    _WORDS = "[\w']+(?:-\w{4,})?"  # sexta-feira = 1 token; digo-lhe = 3 tokens
+    _WORDS = "[\w]+(?:-\w{4,})?"  # sexta-feira = 1 token; digo-lhe = 3 tokens
     _PUNCTUATION = '(?:\.{3})|[.,!?;:()\-"\/—]'
 
     def __init__(
